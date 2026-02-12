@@ -409,11 +409,23 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
                  # ===== FILA 6: EQUIPO | TIPO | SEDE =====
                 col7, col8, col9 = st.columns(3)
                 with col7:
-                    st.text_input("Equipo", fila["equipo"], disabled=True)
+                    st.text_input(
+                        "⚙️Equipos Rotativos / Zona de Ejecución",
+                        fila["equipo"],
+                        disabled=True
+                    )
                 with col8:
-                    st.text_input("Tipo", fila["tipo"], disabled=True)
+                    st.text_input(
+                        "🛠 Tipo de Mantenimiento",
+                        fila["tipo"],
+                        disabled=True
+                    )
                 with col9:
-                    st.text_input("Sede", fila["sede"], disabled=True)
+                    st.text_input(
+                        "🏭Sede",
+                        fila["sede"],
+                        disabled=True
+                    )
 
                  # ===== FILA FINAL =====
                 continua = st.selectbox("¿Continúa?", ["Sí", "No"])
