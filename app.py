@@ -6,6 +6,7 @@
 import streamlit as st
 import gspread
 import pandas as pd
+import unicodedata
 from google.oauth2.service_account import Credentials
 from datetime import datetime, date
 from io import BytesIO
@@ -112,7 +113,7 @@ if st.sidebar.button("Cerrar sesión"):
 
 # ================= PLANEAMIENTO =================
 if st.session_state.rol=="PLANEAMIENTO":
-    st.title("🗂 Planeamiento – Carga diaria de OT")
+    st.title("Planeamiento – Carga diaria de OT")
     with st.form("plan_diario"):
         fecha_plan=st.date_input("Fecha de ejecución",value=date.today())
         ot=st.text_input("OT")
@@ -160,26 +161,196 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
             st.error("❌ La hoja OTs no tiene la columna 'fecha'")
             st.stop()
         df_bit["fecha"] = pd.to_datetime(df_bit["fecha"], errors="coerce").dt.date
-        df_bit["ot"] = df_bit["ot"].astype(str).str.strip()
 
-        ots_registradas = df_bit[
-             (df_bit["area"] == st.session_state.area) &
-             (df_bit["fecha"] == fecha_sel)
+        # Asegurar columnas críticas
+        df_bit["pt"] = df_bit["pt"].astype(str).str.strip().str.upper()
+        df_bit["ot"] = df_bit["ot"].astype(str).str.strip().str.upper()
+        
+        # ===== ASEGURAR COLUMNA actividad_plan =====
+        if "actividad_plan" not in df_bit.columns:
+            df_bit["actividad_plan"] = ""
+        
+        df_bit["actividad_plan"] = df_bit["actividad_plan"].astype(str)
+
+        df_bit["pt"] = df_bit["pt"].astype(str).str.strip()
+
+        #SI PT ≠ S/PT  → consumir por PT
+        #SI PT = S/PT Y OT ≠ S/OT → consumir por OT
+        #SI PT = S/PT Y OT = S/OT → consumir por ACTIVIDAD
+        # ===== NORMALIZAR COLUMNA DE ACTIVIDAD PARA CONSUMO =====
+        
+        df_bit["actividad_consumo"] = df_bit["detalle"].astype(str)
+        df_hoy["actividad_consumo"] = df_hoy["actividad"].astype(str)
+
+        # ================= CLAVE DE CONSUMO DIARIA =================
+        def normalizar_texto(txt):
+            txt = str(txt).upper().strip()
+            txt = unicodedata.normalize("NFKD", txt)
+            txt = "".join(c for c in txt if not unicodedata.combining(c))
+            txt = (
+                txt.replace("  ", " ")
+                   .replace(".", "")
+                   .replace(",", "")
+            )
+            return txt
+        
+        # --- NORMALIZACIÓN ---
+
+        for col in ["pt", "ot"]:
+            df_bit[col] = df_bit[col].astype(str).str.strip().str.upper()
+            df_hoy[col] = df_hoy[col].astype(str).str.strip().str.upper()
+        
+        # IMPORTANTE:
+        # Bitácora usa "actividad_plan"
+        # Planeamiento usa "actividad"
+
+        df_bit["actividad_plan_norm"] = df_bit["actividad_plan"].apply(normalizar_texto)
+        df_hoy["actividad_plan_norm"] = df_hoy["actividad"].apply(normalizar_texto)
+
+        # --- CLAVE DE CONSUMO ---
+
+        def clave_consumo(row):
+            if row["pt"] not in ["S/PT", "", "NONE"]:
+                return f"PT_{row['pt']}"
+            elif row["ot"] not in ["S/OT", "", "NONE"]:
+                return f"OT_{row['ot']}"
+            else:
+                # Caso S/PT + S/OT → por actividad
+                return f"ACT_{row['actividad_plan_norm']}"
+       
+        df_bit["actividad_plan_norm"] = df_bit["actividad_plan"].apply(normalizar_texto)
+        df_hoy["actividad_plan_norm"] = df_hoy["actividad"].apply(normalizar_texto)
+
+        df_bit["clave_consumo"] = df_bit.apply(clave_consumo, axis=1)
+        df_hoy["clave_consumo"] = df_hoy.apply(clave_consumo, axis=1)
+    
+        # ================= CONSUMOS YA REGISTRADOS HOY =================
+        df_consumidos = df_bit[
+            (df_bit["area"] == st.session_state.area) &
+            (df_bit["fecha"] == fecha_sel)
+        ].copy()
+
+        # Asegurar normalización
+        df_consumidos["pt"] = df_consumidos["pt"].astype(str).str.upper().str.strip()
+        df_consumidos["ot"] = df_consumidos["ot"].astype(str).str.upper().str.strip()
+        df_consumidos["actividad_plan_norm"] = df_consumidos["actividad_plan"].apply(normalizar_texto)
+
+        # Construir clave_consumo REAL (bitácora)
+        def clave_consumo_bit(row):
+            if row["pt"] not in ["S/PT", "", "NONE"]:
+                return f"PT_{row['pt']}"
+            elif row["ot"] not in ["S/OT", "", "NONE"]:
+                return f"OT_{row['ot']}"
+            else:
+                return f"ACT_{row['actividad_plan_norm']}"
+
+        df_consumidos["clave_consumo"] = df_consumidos.apply(clave_consumo_bit, axis=1)
+
+        # --- Planeamiento ---
+        df_hoy["pt"] = df_hoy["pt"].astype(str).str.upper().str.strip()
+        df_hoy["ot"] = df_hoy["ot"].astype(str).str.upper().str.strip()
+        df_hoy["actividad_plan_norm"] = df_hoy["actividad"].apply(normalizar_texto)
+
+        def clave_consumo_plan(row):
+            if row["pt"] not in ["S/PT", "", "NONE"]:
+                return f"PT_{row['pt']}"
+            elif row["ot"] not in ["S/OT", "", "NONE"]:
+                return f"OT_{row['ot']}"
+            else:
+                return f"ACT_{row['actividad_plan_norm']}"
+        
+        df_hoy["clave_consumo"] = df_hoy.apply(clave_consumo_plan, axis=1)
+
+        # ================= FILTRO DEFINITIVO DIARIO =================
+        # Normalizar actividad en ambos lados
+        df_hoy["actividad_canon"] = df_hoy["actividad"].apply(normalizar_texto)
+        df_bit["actividad_canon"] = df_bit["actividad_plan"].apply(normalizar_texto)
+
+        df_consumidos = df_bit[
+            (df_bit["area"] == st.session_state.area) &
+            (df_bit["fecha"] == fecha_sel)
+        ].copy()
+
+        # ---------- CASO 1: PT ----------
+        pts_consumidos = df_consumidos[
+            df_consumidos["pt"] != "S/PT"
+        ]["pt"].unique()
+
+        df_hoy = df_hoy[~df_hoy["pt"].isin(pts_consumidos)]
+
+        # ---------- CASO 2: OT ----------
+        ots_consumidos = df_consumidos[
+            (df_consumidos["pt"] == "S/PT") &
+            (df_consumidos["ot"] != "S/OT")
         ]["ot"].unique()
 
-        df_hoy["ot"] = df_hoy["ot"].astype(str).str.strip()
-        df_hoy = df_hoy[~df_hoy["ot"].isin(ots_registradas)]
+        df_hoy = df_hoy[~df_hoy["ot"].isin(ots_consumidos)]
+
+        # ---------- CASO 3: S/PT + S/OT → ACTIVIDAD ----------
+        actividades_consumidas = df_consumidos[
+            (df_consumidos["pt"] == "S/PT") &
+            (df_consumidos["ot"] == "S/OT")
+        ]["actividad_canon"].unique()
+
+        df_hoy = df_hoy[
+        ~df_hoy["actividad_canon"].isin(actividades_consumidas)
+        ]
 
         if df_hoy.empty:
-            st.success("✅ Ya registraste todas tus OTs del día")
+            st.success("✅ Ya registraste todas tus PTs del día")
             st.stop()
 
-        ot_sel = st.selectbox("OT", df_hoy["ot"].tolist())
-        fila = df_hoy[df_hoy["ot"] == ot_sel].iloc[0]
+        ot_sel = st.selectbox("PT", df_hoy["pt"].tolist())
+        fila = df_hoy[df_hoy["pt"] == ot_sel].iloc[0]
 
         df_hist = pd.DataFrame(ws_bitacora.get_all_records())
         df_hist["avance_dia"] = pd.to_numeric(df_hist["avance_dia"], errors="coerce")
-        avance_prev = df_hist[df_hist["ot"] == fila["ot"]]["avance_dia"].max()
+        
+        # ================= AVANCE PREVIO INTELIGENTE =================
+        df_hist["fecha"] = pd.to_datetime(df_hist["fecha"], errors="coerce").dt.date
+
+        # ===== ASEGURAR COLUMNA actividad_plan EN HISTÓRICO =====
+        if "actividad_plan" not in df_hist.columns:
+            df_hist["actividad_plan"] = ""
+        df_hist["actividad_plan"] = df_hist["actividad_plan"].astype(str)
+
+        df_hist_filtrado = df_hist[
+            (df_hist["area"] == st.session_state.area) &
+            (df_hist["fecha"] < fecha_sel)
+        ].copy()
+
+        # Normalizar columnas del histórico (bitácora)
+        for col in ["pt", "ot", "detalle"]:
+            df_hist_filtrado[col] = (
+                df_hist_filtrado[col].astype(str).str.strip().str.upper()
+            )
+        # Normalizar fila actual (OTs)
+        for col in ["pt", "ot", "actividad"]:
+            fila[col] = str(fila[col]).strip().upper()
+
+        # ---------- CRITERIOS ----------
+        if fila["pt"] not in ["S/PT", "", "NONE"]:
+            # CASO 1: PT válida → consumir por PT
+            avance_prev = (
+                df_hist_filtrado[df_hist_filtrado["pt"] == fila["pt"]]["avance_dia"].max()
+            )
+
+        elif fila["ot"] not in ["S/OT", "", "NONE"]:
+            # CASO 2: S/PT + OT → consumir por OT
+            avance_prev = (
+                df_hist_filtrado[df_hist_filtrado["ot"] == fila["ot"]]["avance_dia"].max()
+            )
+
+        else:
+            # CASO 3: S/PT + S/OT → consumir por ACTIVIDAD
+            actividad_norm = normalizar_texto(fila["actividad"])
+
+            avance_prev = (
+                df_hist_filtrado[
+                    df_hist_filtrado["actividad_plan"].apply(normalizar_texto) == actividad_norm
+                ]["avance_dia"].max()    
+            )
+
         if pd.isna(avance_prev):
             avance_prev = 0
 
@@ -188,6 +359,7 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
         recursos.insert(0, "N/A")
 
         with st.form("bitacora", clear_on_submit=True):
+            st.text_input("OT", fila["ot"], disabled=True)
             st.text_input("PT", fila["pt"], disabled=True)
             st.text_input("Equipo", fila["equipo"], disabled=True)
             st.text_input("Tipo", fila["tipo"], disabled=True)
@@ -208,13 +380,18 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
             hora_cierre = st.selectbox("Hora cierre", horas_turno)
 
             recurso = st.selectbox("Recurso personal (apoyo)", recursos)
-            avance = st.slider(
-                "Avance acumulado de la OT (%)",
-                min_value=int(avance_prev),
-                max_value=100,
-                value=int(avance_prev),
-                step=5
-            )
+            
+            if avance_prev >= 100:
+                st.info("✅ Esta OT ya alcanzó el 100% de avance")
+                avance = 100
+            else:
+                avance = st.slider(
+                    "Avance acumulado de la OT (%)",
+                    min_value=int(avance_prev),
+                    max_value=100,
+                    value=int(avance_prev),
+                    step=5
+                )
 
             continua = st.selectbox("¿Continúa?", ["Sí", "No"])
             guardar = st.form_submit_button("Guardar")
@@ -228,9 +405,10 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
             ws_bitacora.append_row([
                 fecha_sel.isoformat(),
                 datetime.now().strftime("%H:%M:%S"),
-                fila["ot"],
                 fila["pt"],
+                fila["ot"],
                 fila["equipo"],
+                fila["actividad"],
                 st.session_state.nombre,
                 detalle,
                 duracion_final,
@@ -469,6 +647,17 @@ def generar_pdf(df_f):
     # =========================
     df_f = df_f.sort_values(by=["fecha", "ot"]).reset_index(drop=True)
 
+    # ===== ASEGURAR COLUMNA ACTIVIDAD PARA PDF (BITÁCORA REAL) =====
+    df_f.columns = df_f.columns.str.strip().str.lower()
+
+    if "actividad_plan" in df_f.columns:
+        df_f["actividad_plan"] = df_f["actividad_plan"].fillna("").astype(str)
+    else:
+        raise ValueError(
+        "❌ La columna 'actividad_plan' NO existe en df_f. "
+        "Revisa el encabezado en la hoja Bitacora."
+        )
+
     # =========================
     # CÁLCULO DE KPIs
     # =========================
@@ -601,12 +790,26 @@ def generar_pdf(df_f):
     story.append(t)
     story.append(PageBreak())
 
-    detalle_cols=["fecha","ot","equipo","mecanico","detalle","duracion","avance_dia","continua"]
-    data=[[Paragraph(c,styles["Cell"]) for c in detalle_cols]]
+    detalle_cols=["fecha","ot","actividad_plan","equipo","mecanico","detalle","duracion","avance_dia","continua"]
+    
+    detalle_headers = [
+        "FECHA",
+        "OT",
+        "ACTIVIDAD",
+        "EQUIPO/UBICACIÓN",
+        "MECÁNICO",
+        "DETALLE DE EJECUTADO",
+        "DURACIÓN",
+        "AVANCE",
+        "CONTINÚA"
+    ]
+    data=[[Paragraph(c,styles["Cell"]) for c in detalle_headers]]
+
     for _,r in df_f[detalle_cols].iterrows():
             data.append([
                 Paragraph(r["fecha"].strftime("%d/%m/%Y"), styles["Cell"]),
                 Paragraph(str(r["ot"]),styles["Cell"]),
+                Paragraph(str(r["actividad_plan"]), styles["Cell"]),   # ← NUEVO
                 Paragraph(str(r["equipo"]),styles["Cell"]),
                 Paragraph(str(r["mecanico"]),styles["Cell"]),
                 Paragraph(str(r["detalle"]).replace("*","<br/>• "),styles["Cell"]),
@@ -618,14 +821,15 @@ def generar_pdf(df_f):
     t2 = Table(
     data,
     colWidths=[
-        2.4*cm,   # Fecha
+        2.0*cm,   # Fecha
         2.0*cm,   # OT
+        4.5*cm,   # ACTIVIDAD
         4.0*cm,   # Equipo
-        3.5*cm,   # Técnico
-        8.8*cm,   # Detalle
-        1.8*cm,   # Horas
-        2.0*cm,   # Avance %
-        1.8*cm    # Continúa
+        3.2*cm,   # Técnico
+        7.5*cm,   # Detalle
+        2.0*cm,   # Horas
+        1.8*cm,   # Avance %
+        1.9*cm    # Continúa
     ],
     repeatRows=1
 )
