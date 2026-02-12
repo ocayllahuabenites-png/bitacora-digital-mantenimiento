@@ -444,17 +444,18 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
         ]
 
         if df_mios.empty:
-            st.info(f"No tienes registros para el {fecha_edit.strftime('%d/%m/%Y')}")
+            st.info(f"📭 No tienes registros para editar el {fecha_edit.strftime('%d/%m/%Y')}")
+            st.stop()
         else:
             st.dataframe(df_mios)
                 # ===== SELECCIONAR REGISTRO =====
-        fila_sel = st.selectbox(
-            "Selecciona registro a editar",
-            df_mios.index,
-            format_func=lambda i: f'OT {df_mios.loc[i,"ot"]} – {df_mios.loc[i,"equipo"]}'
-        )
+            fila_sel = st.selectbox(
+                "Selecciona registro a editar",
+                df_mios.index,
+                format_func=lambda i: f'OT {df_mios.loc[i,"ot"]} – {df_mios.loc[i,"equipo"]}'
+            )
 
-        fila = df_mios.loc[fila_sel]
+            fila = df_mios.loc[fila_sel]
 
         # ===== FORMULARIO DE EDICIÓN =====
         with st.form("editar_registro"):
