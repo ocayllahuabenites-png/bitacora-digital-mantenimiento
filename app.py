@@ -298,131 +298,129 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
 
         if df_hoy.empty:
             st.success("✅ Ya registraste todas tus PTs del día")
-            st.stop()
-
-        ot_sel = st.selectbox("PT", df_hoy["pt"].tolist())
-        fila = df_hoy[df_hoy["pt"] == ot_sel].iloc[0]
-
-        df_hist = pd.DataFrame(ws_bitacora.get_all_records())
-        df_hist["avance_dia"] = pd.to_numeric(df_hist["avance_dia"], errors="coerce")
-        
+            
+        else:
+            ot_sel = st.selectbox("PT", df_hoy["pt"].tolist())
+            fila = df_hoy[df_hoy["pt"] == ot_sel].iloc[0]
+            
+            # ===== HISTÓRICO (TODO JUNTO) =====
+            df_hist = pd.DataFrame(ws_bitacora.get_all_records())
+            df_hist["avance_dia"] = pd.to_numeric(df_hist["avance_dia"], errors="coerce")
+            df_hist["fecha"] = pd.to_datetime(df_hist["fecha"], errors="coerce").dt.date
         # ================= AVANCE PREVIO INTELIGENTE =================
-        df_hist["fecha"] = pd.to_datetime(df_hist["fecha"], errors="coerce").dt.date
+       
+            if "actividad_plan" not in df_hist.columns:
+                df_hist["actividad_plan"] = ""
 
-        # ===== ASEGURAR COLUMNA actividad_plan EN HISTÓRICO =====
-        if "actividad_plan" not in df_hist.columns:
-            df_hist["actividad_plan"] = ""
-        df_hist["actividad_plan"] = df_hist["actividad_plan"].astype(str)
+            df_hist["actividad_plan"] = df_hist["actividad_plan"].astype(str)
 
-        df_hist_filtrado = df_hist[
-            (df_hist["area"] == st.session_state.area) &
-            (df_hist["fecha"] < fecha_sel)
-        ].copy()
+            df_hist_filtrado = df_hist[
+                (df_hist["area"] == st.session_state.area) &
+                (df_hist["fecha"] < fecha_sel)
+            ].copy()
 
         # Normalizar columnas del histórico (bitácora)
-        for col in ["pt", "ot", "detalle"]:
-            df_hist_filtrado[col] = (
-                df_hist_filtrado[col].astype(str).str.strip().str.upper()
-            )
+            for col in ["pt", "ot", "detalle"]:
+                df_hist_filtrado[col] = (
+                    df_hist_filtrado[col].astype(str).str.strip().str.upper()
+                )
         # Normalizar fila actual (OTs)
-        for col in ["pt", "ot", "actividad"]:
-            fila[col] = str(fila[col]).strip().upper()
+            for col in ["pt", "ot", "actividad"]:
+                fila[col] = str(fila[col]).strip().upper()
 
         # ---------- CRITERIOS ----------
-        if fila["pt"] not in ["S/PT", "", "NONE"]:
+            if fila["pt"] not in ["S/PT", "", "NONE"]:
             # CASO 1: PT válida → consumir por PT
-            avance_prev = (
-                df_hist_filtrado[df_hist_filtrado["pt"] == fila["pt"]]["avance_dia"].max()
-            )
+                avance_prev =df_hist_filtrado[
+                    df_hist_filtrado["pt"] == fila["pt"]
+                ]["avance_dia"].max()
 
-        elif fila["ot"] not in ["S/OT", "", "NONE"]:
+            elif fila["ot"] not in ["S/OT", "", "NONE"]:
             # CASO 2: S/PT + OT → consumir por OT
-            avance_prev = (
-                df_hist_filtrado[df_hist_filtrado["ot"] == fila["ot"]]["avance_dia"].max()
-            )
-
-        else:
+                avance_prev = df_hist_filtrado[
+                    df_hist_filtrado["ot"] == fila["ot"]
+                ]["avance_dia"].max()
+            
+            else:
             # CASO 3: S/PT + S/OT → consumir por ACTIVIDAD
-            actividad_norm = normalizar_texto(fila["actividad"])
-
-            avance_prev = (
-                df_hist_filtrado[
+                actividad_norm = normalizar_texto(fila["actividad"])
+                avance_prev = df_hist_filtrado[
                     df_hist_filtrado["actividad_plan"].apply(normalizar_texto) == actividad_norm
                 ]["avance_dia"].max()    
-            )
+    
 
-        if pd.isna(avance_prev):
-            avance_prev = 0
+            if pd.isna(avance_prev):
+                avance_prev = 0
 
-        df_users = pd.DataFrame(ws_usuarios.get_all_records())
-        recursos = df_users[df_users["area"] == st.session_state.area]["Nombre"].tolist()
-        recursos.insert(0, "N/A")
+            df_users = pd.DataFrame(ws_usuarios.get_all_records())
+            recursos = df_users[df_users["area"] == st.session_state.area]["Nombre"].tolist()
+            recursos.insert(0, "N/A")
 
-        with st.form("bitacora", clear_on_submit=True):
-            st.text_input("OT", fila["ot"], disabled=True)
-            st.text_input("PT", fila["pt"], disabled=True)
-            st.text_input("Equipo", fila["equipo"], disabled=True)
-            st.text_input("Tipo", fila["tipo"], disabled=True)
-            st.text_input("Sede", fila["sede"], disabled=True)
-            st.text_area("Actividad", fila["actividad"], disabled=True)
+            with st.form("bitacora", clear_on_submit=True):
+                st.text_input("OT", fila["ot"], disabled=True)
+                st.text_input("PT", fila["pt"], disabled=True)
+                st.text_input("Equipo", fila["equipo"], disabled=True)
+                st.text_input("Tipo", fila["tipo"], disabled=True)
+                st.text_input("Sede", fila["sede"], disabled=True)
+                st.text_area("Actividad", fila["actividad"], disabled=True)
 
-            detalle = st.text_area("Detalle ejecutado")
+                detalle = st.text_area("Detalle ejecutado")
 
-            from datetime import time
-            horas_turno = (
-                [time(h, 0) for h in range(7, 12)] +
-                [time(12, 0)] +
-                [time(13, 30)] +
-                [time(h, 0) for h in range(14, 20)]
-            )
-
-            hora_inicio = st.selectbox("Hora inicio", horas_turno)
-            hora_cierre = st.selectbox("Hora cierre", horas_turno)
-
-            recurso = st.selectbox("Recurso personal (apoyo)", recursos)
-            
-            if avance_prev >= 100:
-                st.info("✅ Esta OT ya alcanzó el 100% de avance")
-                avance = 100
-            else:
-                avance = st.slider(
-                    "Avance acumulado de la OT (%)",
-                    min_value=int(avance_prev),
-                    max_value=100,
-                    value=int(avance_prev),
-                    step=5
+                from datetime import time
+                horas_turno = (
+                    [time(h, 0) for h in range(7, 12)] +
+                    [time(12, 0)] +
+                    [time(13, 30)] +
+                    [time(h, 0) for h in range(14, 20)]
                 )
 
-            continua = st.selectbox("¿Continúa?", ["Sí", "No"])
-            guardar = st.form_submit_button("Guardar")
+                hora_inicio = st.selectbox("Hora inicio", horas_turno)
+                hora_cierre = st.selectbox("Hora cierre", horas_turno)
 
-        if guardar:
-            hi = datetime.combine(fecha_sel, hora_inicio)
-            hf = datetime.combine(fecha_sel, hora_cierre)
+                recurso = st.selectbox("Recurso personal (apoyo)", recursos)
+            
+                if avance_prev >= 100:
+                    st.info("✅ Esta OT ya alcanzó el 100% de avance")
+                    avance = 100
+                else:
+                    avance = st.slider(
+                        "Avance acumulado de la OT (%)",
+                        min_value=int(avance_prev),
+                        max_value=100,
+                        value=int(avance_prev),
+                        step=5
+                    )
 
-            duracion_final = round((hf - hi).total_seconds() / 3600, 2)
+                continua = st.selectbox("¿Continúa?", ["Sí", "No"])
+                guardar = st.form_submit_button("Guardar")
 
-            ws_bitacora.append_row([
-                fecha_sel.isoformat(),
-                datetime.now().strftime("%H:%M:%S"),
-                fila["pt"],
-                fila["ot"],
-                fila["equipo"],
-                fila["actividad"],
-                st.session_state.nombre,
-                detalle,
-                duracion_final,
-                avance,
-                continua,
-                st.session_state.area,
-                recurso,
-                "", "",
-                hora_inicio.strftime("%H:%M"),
-                hora_cierre.strftime("%H:%M")
-            ])
+                if guardar:
+                    hi = datetime.combine(fecha_sel, hora_inicio)
+                    hf = datetime.combine(fecha_sel, hora_cierre)
 
-            st.success("Registro guardado")
-            st.rerun()
+                    duracion_final = round((hf - hi).total_seconds() / 3600, 2)
+
+                    ws_bitacora.append_row([
+                        fecha_sel.isoformat(),
+                        datetime.now().strftime("%H:%M:%S"),
+                        fila["pt"],
+                        fila["ot"],
+                        fila["equipo"],
+                        fila["actividad"],
+                        st.session_state.nombre,
+                        detalle,
+                        duracion_final,
+                        avance,
+                        continua,
+                        st.session_state.area,
+                        recurso,
+                        "", "",
+                        hora_inicio.strftime("%H:%M"),
+                        hora_cierre.strftime("%H:%M")
+                    ])
+
+                    st.success("Registro guardado")
+                    st.rerun()
 
     # ================= MIS REGISTROS =================
     with tab_mis_registros:
@@ -447,9 +445,8 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
 
         if df_mios.empty:
             st.info(f"No tienes registros para el {fecha_edit.strftime('%d/%m/%Y')}")
-            st.stop()
-
-        st.dataframe(df_mios)
+        else:
+            st.dataframe(df_mios)
                 # ===== SELECCIONAR REGISTRO =====
         fila_sel = st.selectbox(
             "Selecciona registro a editar",
