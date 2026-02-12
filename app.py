@@ -357,15 +357,25 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
             recursos.insert(0, "N/A")
 
             with st.form("bitacora", clear_on_submit=True):
-                st.text_input("OT", fila["ot"], disabled=True)
-                st.text_input("PT", fila["pt"], disabled=True)
-                st.text_input("Equipo", fila["equipo"], disabled=True)
-                st.text_input("Tipo", fila["tipo"], disabled=True)
-                st.text_input("Sede", fila["sede"], disabled=True)
-                st.text_area("Actividad", fila["actividad"], disabled=True)
+                # ===== FILA 1: OT | PT =====
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.text_input("OT", fila["ot"], disabled=True)
+                with col2:
+                    st.text_input("PT", fila["pt"], disabled=True)
 
-                detalle = st.text_area("Detalle ejecutado")
-
+                # ===== FILA 2: ACTIVIDAD =====
+                st.text_area(
+                    "Actividad",
+                    fila["actividad"],
+                    disabled=True,
+                    height=90
+                )
+                # ===== FILA 3: DETALLE EJECUTADO =====
+                detalle = st.text_area(
+                    "Detalle ejecutado",
+                    height=120
+                )
                 from datetime import time
                 horas_turno = (
                     [time(h, 0) for h in range(7, 12)] +
@@ -373,33 +383,47 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
                     [time(13, 30)] +
                     [time(h, 0) for h in range(14, 20)]
                 )
+                # ===== FILA 4: HORA INICIO | HORA CIERRE =====
+                col3, col4 = st.columns(2)
+                with col3:
+                    hora_inicio = st.selectbox("Hora inicio", horas_turno)
+                with col4:
+                    hora_cierre = st.selectbox("Hora cierre", horas_turno)
 
-                hora_inicio = st.selectbox("Hora inicio", horas_turno)
-                hora_cierre = st.selectbox("Hora cierre", horas_turno)
+                # ===== FILA 5: RECURSO | AVANCE =====
+                col5, col6 = st.columns(2)
+                with col5:
+                    recurso = st.selectbox("Recurso personal (apoyo)", recursos)
+                with col6:
+                    if avance_prev >= 100:
+                        st.info("✅ Esta OT ya alcanzó el 100% de avance")
+                        avance = 100
+                    else:
+                        avance = st.slider(
+                            "Avance acumulado de la OT (%)",
+                            min_value=int(avance_prev),
+                            max_value=100,
+                            value=int(avance_prev),
+                            step=5
+                        )
+                 # ===== FILA 6: EQUIPO | TIPO | SEDE =====
+                col7, col8, col9 = st.columns(3)
+                with col7:
+                    st.text_input("Equipo", fila["equipo"], disabled=True)
+                with col8:
+                    st.text_input("Tipo", fila["tipo"], disabled=True)
+                with col9:
+                    st.text_input("Sede", fila["sede"], disabled=True)
 
-                recurso = st.selectbox("Recurso personal (apoyo)", recursos)
-            
-                if avance_prev >= 100:
-                    st.info("✅ Esta OT ya alcanzó el 100% de avance")
-                    avance = 100
-                else:
-                    avance = st.slider(
-                        "Avance acumulado de la OT (%)",
-                        min_value=int(avance_prev),
-                        max_value=100,
-                        value=int(avance_prev),
-                        step=5
-                    )
-
+                 # ===== FILA FINAL =====
                 continua = st.selectbox("¿Continúa?", ["Sí", "No"])
                 guardar = st.form_submit_button("Guardar")
-
+                
                 if guardar:
                     hi = datetime.combine(fecha_sel, hora_inicio)
                     hf = datetime.combine(fecha_sel, hora_cierre)
 
                     duracion_final = round((hf - hi).total_seconds() / 3600, 2)
-
                     ws_bitacora.append_row([
                         fecha_sel.isoformat(),
                         datetime.now().strftime("%H:%M:%S"),
