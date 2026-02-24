@@ -3,7 +3,7 @@
 # ING. MECÁNICA ELÉCTRICA - JHAN HERRERA ORBEZO
 # ============================================================
 
-import streamlit as st
+import streamlit  st
 import gspread
 import pandas as pd
 import unicodedata
@@ -1036,3 +1036,4 @@ if st.session_state.rol in ["SUPERVISOR","PLANEAMIENTO"]:
         file_name="Bitacora_Cronologica.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
