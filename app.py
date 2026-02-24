@@ -59,6 +59,14 @@ ws_bitacora=sheet.worksheet("Bitacora")
 if "login" not in st.session_state: st.session_state.login=False
 if "area" not in st.session_state: st.session_state.area=None
 
+# ================= ROLES =================
+ROLES_TECNICOS = [
+    "MECÁNICO",
+    "ELECTRICISTA",
+    "INSTRUMENTISTA",
+    "RECORREDOR DE DUCTOS"
+]
+
 def portada_login(image_file):
     with open(image_file,"rb") as f:
         encoded=base64.b64encode(f.read()).decode()
@@ -91,6 +99,7 @@ if not st.session_state.login:
             st.session_state.nombre=valid.iloc[0]["Nombre"]
             st.session_state.rol=valid.iloc[0]["Rol"]
             st.session_state.area=valid.iloc[0]["area"]
+            st.session_state.cargo = valid.iloc[0].get("cargo", st.session_state.rol)
             st.rerun()
         else:
             st.error("Credenciales incorrectas")
@@ -105,7 +114,7 @@ with st.sidebar:
     elif os.path.exists(ruta_default): st.image(ruta_default)
     else: st.markdown("👤 Sin foto")
 st.sidebar.success(st.session_state.nombre)
-st.sidebar.info(st.session_state.rol)
+st.sidebar.info(st.session_state.cargo)
 st.sidebar.info(f"Área: {st.session_state.area}")
 if st.sidebar.button("Cerrar sesión"):
     st.session_state.clear()
@@ -131,8 +140,8 @@ if st.session_state.rol=="PLANEAMIENTO":
     st.dataframe(pd.DataFrame(ws_ots.get_all_records()))
 
 # ================= BITÁCORA (DURACIÓN AUTOMÁTICA) =================
-if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
-    st.title("🛠 Bitácora diaria")
+if st.session_state.rol in ROLES_TECNICOS:
+    st.title(f"🛠 Bitácora diaria – {st.session_state.area}")
 
     tab_registro, tab_mis_registros, tab_avance = st.tabs([
         "📝 Registrar OT",
@@ -499,12 +508,24 @@ if st.session_state.rol in ["MECÁNICO","INSTRUMENTISTA","ELECTRICISTA"]:
                 "Detalle ejecutado",
                 fila["detalle"]
             )
+            
+            # ===== DURACIÓN (VALIDADA) =====
+
+            duracion_actual = fila["duracion"]
+
+            try:
+                duracion_actual = float(duracion_actual)
+            except:
+                duracion_actual = 0.1
+            
+            if duracion_actual < 0.1:
+                duracion_actual = 0.1
 
             duracion_edit = st.number_input(
                 "Duración (h)",
                 min_value=0.1,
                 step=0.1,
-                value=float(fila["duracion"])
+                value=duracion_actual
             )
 
             avance_edit = st.slider(
@@ -943,7 +964,7 @@ def generar_excel(df_f):
     return buffer
 
 if st.session_state.rol in ["SUPERVISOR","PLANEAMIENTO"]:
-    st.title("📊 Supervisión – KPIs")
+    st.title(f"📊 {st.session_state.cargo} – KPIs")
     df=pd.DataFrame(ws_bitacora.get_all_records())
     df["fecha"]=pd.to_datetime(df["fecha"],errors="coerce")
     df["duracion"]=pd.to_numeric(df["duracion"],errors="coerce")
@@ -1036,5 +1057,3 @@ if st.session_state.rol in ["SUPERVISOR","PLANEAMIENTO"]:
         file_name="Bitacora_Cronologica.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
