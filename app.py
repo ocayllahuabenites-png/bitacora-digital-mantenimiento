@@ -120,25 +120,6 @@ if st.sidebar.button("Cerrar sesión"):
     st.session_state.clear()
     st.rerun()
 
-# ================= PLANEAMIENTO =================
-if st.session_state.rol=="PLANEAMIENTO":
-    st.title("Planeamiento – Carga diaria de OT")
-    with st.form("plan_diario"):
-        fecha_plan=st.date_input("Fecha de ejecución",value=date.today())
-        ot=st.text_input("OT")
-        pt=st.text_input("PT")
-        equipo=st.text_input("Equipo")
-        actividad=st.text_area("Actividad")
-        tipo=st.selectbox("Tipo",["Preventivo","Correctivo","Predictivo","Inspección"])
-        area_ot=st.selectbox("Área",["MEC","EI&C"])
-        sede=st.selectbox("Sede",["PGAS","PFRAC","PDUC"])
-        guardar=st.form_submit_button("Guardar")
-    if guardar:
-        ws_ots.append_row([pt,ot,actividad,fecha_plan.isoformat(),equipo,tipo,area_ot,sede])
-        st.success("OT registrada")
-        st.rerun()
-    st.dataframe(pd.DataFrame(ws_ots.get_all_records()))
-
 # ================= BITÁCORA (DURACIÓN AUTOMÁTICA) =================
 if st.session_state.rol in ROLES_TECNICOS:
     st.title(f"🛠 Bitácora diaria – {st.session_state.area}")
@@ -153,20 +134,24 @@ if st.session_state.rol in ROLES_TECNICOS:
     with tab_registro:
         df_plan = pd.DataFrame(ws_ots.get_all_records())
         df_plan.columns = df_plan.columns.str.strip().str.lower()
-        if "fecha" not in df_plan.columns:
-            st.error("❌ La hoja OTs no tiene la columna 'fecha'")
+        if "fecha ejecucion" not in df_plan.columns:
+            st.error("❌ La hoja OTs no tiene la columna 'fecha ejecucion'")
             st.stop()
-        df_plan["fecha"] = pd.to_datetime(df_plan["fecha"], errors="coerce").dt.date
+        df_plan["fecha ejecucion"] = pd.to_datetime(
+            df_plan["fecha ejecucion"], 
+            dayfirst = True,
+            errors="coerce"
+        ).dt.date
         df_plan["area"] = df_plan["area"].astype(str).str.strip()
         df_plan = df_plan[df_plan["area"] == st.session_state.area]
 
         fecha_sel = st.date_input("Fecha", value=date.today())
 
-        df_hoy = df_plan[df_plan["fecha"] == fecha_sel]
+        df_hoy = df_plan[df_plan["fecha ejecucion"] == fecha_sel]
 
         df_bit = pd.DataFrame(ws_bitacora.get_all_records())
         df_plan.columns = df_plan.columns.str.strip().str.lower()
-        if "fecha" not in df_plan.columns:
+        if "fecha ejecucion" not in df_plan.columns:
             st.error("❌ La hoja OTs no tiene la columna 'fecha'")
             st.stop()
         df_bit["fecha"] = pd.to_datetime(df_bit["fecha"], errors="coerce").dt.date
@@ -426,7 +411,7 @@ if st.session_state.rol in ROLES_TECNICOS:
                 with col8:
                     st.text_input(
                         "🛠 Tipo de Mantenimiento",
-                        fila["tipo"],
+                        fila["tipo mantto"],
                         disabled=True
                     )
                 with col9:
@@ -964,6 +949,232 @@ def generar_excel(df_f):
     return buffer
 
 if st.session_state.rol in ["SUPERVISOR","PLANEAMIENTO"]:
+
+    # ================= DASHBOARD EHS =================
+    if st.session_state.area == "EHS":
+
+        st.title("🚨 DASHBOARD DE SEGURIDAD OPERACIONAL")
+
+        df_ots = pd.DataFrame(ws_ots.get_all_records())
+        df_ots.columns = df_ots.columns.str.strip().str.lower()
+
+        # ================= FILTRO DE FECHAS =================
+        df_ots["fecha ejecucion"] = pd.to_datetime(
+            df_ots["fecha ejecucion"],
+            dayfirst=True,
+            errors="coerce"
+        )
+
+        colf1, colf2 = st.columns(2)
+
+        with colf1:
+            fecha_inicio = st.date_input(
+                "Fecha inicio",
+                value=df_ots["fecha ejecucion"].min()
+            )
+
+        with colf2:
+            fecha_fin = st.date_input(
+                "Fecha fin",
+                value=df_ots["fecha ejecucion"].max()
+            )
+
+        df_ots = df_ots[
+            (df_ots["fecha ejecucion"] >= pd.to_datetime(fecha_inicio)) &
+            (df_ots["fecha ejecucion"] <= pd.to_datetime(fecha_fin))
+        ]
+
+        st.markdown("---")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        pt_frio = (df_ots["tipo pt"] == "FRIO").sum()
+        pt_caliente = (df_ots["tipo pt"] == "CALIENTE").sum()
+        riesgo_alto = (df_ots["riesgo potencial"] == "ALTO").sum()
+        trabajos_psm = (df_ots["psm"] == "SI").sum()
+
+        col1.metric("PT FRÍO", pt_frio)
+        col2.metric("PT CALIENTE", pt_caliente)
+        col3.metric("Riesgo ALTO", riesgo_alto)
+        col4.metric("Trabajos PSM", trabajos_psm)
+
+        st.markdown("---")
+
+        st.subheader("Distribución de Riesgo Potencial")
+        riesgo = df_ots[df_ots["riesgo potencial"] != "NA"]
+        riesgo = riesgo.groupby("riesgo potencial").size().reset_index(name="cantidad")
+        chart_riesgo = alt.Chart(riesgo).mark_bar().encode(
+            x=alt.X("riesgo potencial:N", title="Nivel de Riesgo"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("riesgo potencial:N", legend=None)
+        )
+        texto = alt.Chart(riesgo).mark_text(
+            align="center",
+            baseline="bottom",
+            dy=-5,
+            fontSize=14
+        ).encode(
+            x="riesgo potencial:N",
+            y="cantidad:Q",
+            text="cantidad:Q"
+        )
+
+        st.altair_chart(chart_riesgo, use_container_width=True)
+
+        st.markdown("### Indicadores Operacionales de Seguridad")
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        riesgo_medio = (df_ots["riesgo potencial"] == "MEDIO").sum()
+        riesgo_bajo = (df_ots["riesgo potencial"] == "BAJO").sum()
+        pt_total = df_ots["tipo pt"].notna().sum()
+        passt = (df_ots["tipo mantto"] == "PASST").sum()
+
+        c1.metric("Riesgo MEDIO", riesgo_medio)
+        c2.metric("Riesgo BAJO", riesgo_bajo)
+        c3.metric("Total PT", pt_total)
+        c4.metric("Actividades PASST", passt)
+
+        st.markdown("### Distribución de Permisos de Trabajo")
+        pt_chart = df_ots[df_ots["tipo pt"] != "NA"]
+        pt_chart = pt_chart.groupby("tipo pt").size().reset_index(name="cantidad")
+        st.bar_chart(pt_chart.set_index("tipo pt"))
+
+        st.markdown("### Trabajos PSM")
+        psm_chart = df_ots.groupby("psm").size().reset_index(name="cantidad")
+        chart_psm = alt.Chart(psm_chart).mark_bar().encode(
+            x=alt.X("psm:N", title="PSM"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("psm:N", legend=None)
+        )
+        st.altair_chart(chart_psm, use_container_width=True)
+
+        st.markdown("### Trabajos por Empresa")
+        empresa_chart = df_ots.groupby("empresa").size().reset_index(name="cantidad")
+        chart_empresa = alt.Chart(empresa_chart).mark_bar().encode(
+            x=alt.X("empresa:N", title="Empresa"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("empresa:N", legend=None)
+        )
+        st.altair_chart(chart_empresa, use_container_width=True)
+
+        st.markdown("### Trabajos por Sede")
+        sede_chart = df_ots.groupby("sede").size().reset_index(name="cantidad")
+        chart_sede = alt.Chart(sede_chart).mark_bar().encode(
+            x=alt.X("sede:N", title="Sede"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("sede:N", legend=None)
+        )
+        st.altair_chart(chart_sede, use_container_width=True)
+
+        st.markdown("### Tipo de Mantenimiento")
+        mantto_chart = df_ots[
+            (df_ots["tipo mantto"] != "GESTION") &
+            (df_ots["tipo mantto"] != "PASST")
+        ]
+        mantto_chart = mantto_chart.groupby("tipo mantto").size().reset_index(name="cantidad")
+        chart_mantto = alt.Chart(mantto_chart).mark_bar().encode(
+            x=alt.X("tipo mantto:N", title="Tipo de mantenimiento"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("tipo mantto:N", legend=None)
+        )
+        st.altair_chart(chart_mantto, use_container_width=True)
+
+        st.markdown("### Trabajos por Área")
+        area_chart = df_ots.groupby("area").size().reset_index(name="cantidad")
+        chart_area = alt.Chart(area_chart).mark_bar().encode(
+            x=alt.X("area:N", title="Área"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("area:N", legend=None)
+        )
+
+        st.altair_chart(chart_area, use_container_width=True)
+
+        st.markdown("### Índice de Riesgo Operacional")
+        total_trabajos = len(df_ots)
+        if total_trabajos > 0:
+            indice_riesgo = round((riesgo_alto / total_trabajos) * 100, 2)
+        else:
+            indice_riesgo = 0
+        pt_caliente_pct = round((pt_caliente / pt_total) * 100, 2) if pt_total > 0 else 0
+        psm_pct = round((trabajos_psm / total_trabajos) * 100, 2) if total_trabajos > 0 else 0
+        riesgo_reducido = (df_ots["riesgo controles"] != df_ots["riesgo potencial"]).sum()
+        indice_control = round((riesgo_reducido / total_trabajos) * 100, 2) if total_trabajos > 0 else 0
+
+        # ===== Mostrar KPIs en columnas =====
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric("Índice de Riesgo (%)", f"{indice_riesgo}%")
+        c2.metric("Índice PT Caliente (%)", f"{pt_caliente_pct}%")
+        c3.metric("Índice PSM (%)", f"{psm_pct}%")
+        c4.metric("Riesgos Controlados (%)", f"{indice_control}%")
+
+        st.markdown("### Riesgos Altos por Área")
+        riesgo_area = (
+            df_ots[df_ots["riesgo potencial"] == "ALTO"]
+            .groupby("area")
+            .size()
+        )
+        riesgo_area = (
+            df_ots[df_ots["riesgo potencial"] == "ALTO"]
+            .groupby("area")
+            .size()
+            .reset_index(name="cantidad")
+        )
+        chart_riesgo_area = alt.Chart(riesgo_area).mark_bar().encode(
+            x=alt.X("area:N", title="Área"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("area:N", legend=None)
+        )
+        st.altair_chart(chart_riesgo_area, use_container_width=True)
+
+        st.markdown("### Riesgo Alto por Sede")
+        riesgo_sede = (
+            df_ots[df_ots["riesgo potencial"] == "ALTO"]
+            .groupby("sede")
+            .size()
+        )
+        riesgo_sede = (
+            df_ots[df_ots["riesgo potencial"] == "ALTO"]
+            .groupby("sede")
+            .size()
+            .reset_index(name="cantidad")
+        )
+
+        chart_riesgo_sede = alt.Chart(riesgo_sede).mark_bar().encode(
+            x=alt.X("sede:N", title="Sede"),
+            y=alt.Y("cantidad:Q", title="Cantidad"),
+            color=alt.Color("sede:N", legend=None)
+        )
+
+        st.altair_chart(chart_riesgo_sede, use_container_width=True)
+        
+        st.markdown("### Tendencia de Trabajos por Día")
+        trabajos_dia = (
+            df_ots.groupby("fecha ejecucion")
+            .size()
+        )
+        st.line_chart(trabajos_dia)
+
+        st.markdown("### Tendencia de Riesgo Alto")
+
+        riesgo_dia = (
+            df_ots[df_ots["riesgo potencial"] == "ALTO"]
+            .groupby("fecha ejecucion")
+            .size()
+        )
+        st.line_chart(riesgo_dia)
+
+        passt_pct = round((passt / total_trabajos) * 100, 2) if total_trabajos > 0 else 0
+        st.metric("Actividades PASST (%)", f"{passt_pct}%")
+        
+        exposicion = riesgo_alto + pt_caliente + trabajos_psm
+        indice_exposicion = round((exposicion / total_trabajos) * 100, 2) if total_trabajos > 0 else 0
+        st.metric("Índice de Exposición Operacional", f"{indice_exposicion}%")
+
+        st.stop()
+
+
     st.title(f"📊 {st.session_state.cargo} – KPIs")
     df=pd.DataFrame(ws_bitacora.get_all_records())
     df["fecha"]=pd.to_datetime(df["fecha"],errors="coerce")
