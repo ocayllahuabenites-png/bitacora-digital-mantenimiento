@@ -676,7 +676,7 @@ if st.session_state.rol in ROLES_TECNICOS:
             fila_sheet = fila_sel + 2  # +2 por encabezado
 
             ws_bitacora.update(
-                f"G{fila_sheet}:J{fila_sheet}",
+                f"H{fila_sheet}:K{fila_sheet}",
                 [[
                     detalle_edit,
                     duracion_edit,
@@ -1391,6 +1391,100 @@ if st.session_state.rol in ["SUPERVISOR","PLANEAMIENTO"]:
     )
 
     st.dataframe(df_f)
+
+    # ============================================================
+# 🔥 POWER UP: PERFIL DE TÉCNICO (ANÁLISIS INDIVIDUAL)
+# ============================================================
+
+    st.markdown("---")
+    st.markdown("## 👨‍🔧 Análisis de Desempeño por Técnico")
+
+# ================= SELECTOR =================
+    df_users = pd.DataFrame(ws_usuarios.get_all_records())
+    tecnicos = df_f["mecanico"].dropna().unique().tolist()
+
+    if len(tecnicos) == 0:
+        st.warning("No hay técnicos disponibles en el rango seleccionado")
+    else:
+        tecnico_sel = st.selectbox("Seleccionar técnico", tecnicos)
+
+    # ================= FILTRO =================
+        df_tec = df_f[df_f["mecanico"] == tecnico_sel]
+
+    # ================= FOTO + KPIs =================
+        col1, col2 = st.columns([1,3])
+
+        fila_user = df_users[df_users["Nombre"] == tecnico_sel]
+    
+    if not fila_user.empty:
+        usuario_codigo = fila_user.iloc[0]["Usuario"]
+        ruta_foto = f"fotos/{usuario_codigo}.jpg"
+    else:
+        ruta_foto = "fotos/default.jpg"
+
+    ruta_default = "fotos/default.jpg"
+    
+    with col1:
+        if os.path.exists(ruta_foto):
+            st.image(ruta_foto, width=150)
+        else:
+            st.image(ruta_default, width=150)
+
+    with col2:
+        st.subheader(tecnico_sel)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("OTs ejecutadas", df_tec["ot"].nunique())
+        c2.metric("Horas trabajadas", round(df_tec["duracion"].sum(),1))
+        c3.metric("Avance promedio (%)", round(df_tec["avance_dia"].mean(),1))
+        c4.metric("Registros", len(df_tec))
+
+    st.markdown("---")
+
+    # ================= EQUIPOS =================
+    st.markdown("### ⚙️ Equipos intervenidos")
+
+    df_eq = df_tec["equipo"].value_counts().reset_index()
+    df_eq.columns = ["equipo","intervenciones"]
+
+    st.bar_chart(df_eq.set_index("equipo"))
+
+    st.markdown("---")
+
+    # ================= HORAS POR DÍA =================
+    st.markdown("### ⏱ Horas trabajadas por día")
+
+    df_horas = (
+        df_tec.groupby(df_tec["fecha"].dt.date)["duracion"]
+        .sum()
+        .reset_index()
+    )
+
+    st.line_chart(df_horas.set_index("fecha"))
+
+    st.markdown("---")
+
+    # ================= OTs =================
+    st.markdown("### 🧾 OTs ejecutadas")
+
+    df_ot = (
+        df_tec.groupby("ot")["duracion"]
+        .sum()
+        .reset_index()
+        .sort_values("duracion", ascending=False)
+    )
+
+    st.bar_chart(df_ot.set_index("ot"))
+
+    st.markdown("---")
+
+    # ================= HISTORIAL =================
+    st.markdown("### 📋 Historial detallado")
+
+    st.dataframe(
+        df_tec.sort_values(by="fecha", ascending=False),
+        use_container_width=True
+    )
 
     pdf = generar_pdf(df_f)
     st.download_button(
