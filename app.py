@@ -38,13 +38,52 @@ st.set_page_config(page_title="Bitácora Digital de Mantenimiento", page_icon="�
 st.markdown("""
 <style>
 [data-testid="stSidebar"] img {border-radius:50%;display:block;margin-left:auto;margin-right:auto;}
-.login-box{background:linear-gradient(180deg,rgba(0,0,0,0.78),rgba(25,25,25,0.88));padding:70px 60px;border-radius:22px;max-width:520px;margin:90px auto;color:white;box-shadow:0px 25px 60px rgba(0,0,0,0.6);}
-.login-title{font-size:52px;font-weight:900;text-align:center;letter-spacing:1px;}
+.login-box{
+    background:linear-gradient(180deg,rgba(0,0,0,0.78),rgba(25,25,25,0.88));
+
+    padding:50px 60px;
+
+    border-radius:22px;
+
+    max-width:800px;   /* 🔥 MÁS ANCHO */
+    width:95%;
+
+    margin:60px auto;
+
+    color:white;
+    box-shadow:0px 25px 60px rgba(0,0,0,0.6);
+
+    height:auto;
+    overflow:visible;
+}
+.login-title{
+    font-size:44px;
+    font-weight:900;        /* 🔥 MÁS GRUESO */
+    text-align:center;
+    letter-spacing:1.5px;   /* 🔥 MÁS INDUSTRIAL */
+    line-height:1.2;
+    
+    text-transform:uppercase;
+    
+    text-shadow: 0px 2px 10px rgba(0,0,0,0.6);  /* 🔥 PROFUNDIDAD */
+}
 .login-subtitle{font-size:22px;text-align:center;margin-top:10px;font-weight:500;}
 .login-line{margin:18px auto;width:80px;height:3px;background:#2ecc71;border-radius:10px;}
 .login-features{text-align:center;font-size:14px;opacity:0.85;margin-bottom:25px;}
 .login-footer{text-align:center;font-size:11px;opacity:0.5;margin-top:30px;}
+            @keyframes girar {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.gear {
+    font-size:50px;
+    text-align:center;
+    margin-bottom:15px;
+    animation: girar 6s linear infinite;
+}
 </style>
+
 """, unsafe_allow_html=True)
 
 # ================= GOOGLE =================
@@ -55,6 +94,7 @@ sheet=gc.open("Bitacora_Mantenimiento")
 ws_usuarios=sheet.worksheet("Usuarios")
 ws_ots=sheet.worksheet("OTs")
 ws_bitacora=sheet.worksheet("Bitacora")
+ws_adicional = sheet.worksheet("Actividades_Adicionales")
 
 if "login" not in st.session_state: st.session_state.login=False
 if "area" not in st.session_state: st.session_state.area=None
@@ -80,17 +120,18 @@ if not st.session_state.login:
     portada_login("fondo_planta.jpg")
     st.markdown("""
     <div class="login-box">
-        <div class="login-title">BITÁCORA DIGITAL</div>
-        <div class="login-subtitle">MANTENIMIENTO MECÁNICO Y EI&C</div>
+        <div class="gear">⚙️</div>
+        <div class="login-title">SISTEMA DE GESTIÓN DE MANTENIMIENTO</div>
+        <div class="login-subtitle">MECÁNICO · EI&C · GIA · EHS</div>
         <div class="login-line"></div>
         <div class="login-features">
-            Planeamiento · Ejecución · Supervisión · KPIs<br>
-            ✔ Control diario de OT ✔ Avance acumulado ✔ Cambio de guardia
+            Planeamiento · Ejecución · Confiabilidad · KPIs<br>
+            ✔ Control de OTs ✔ Actividades no planificadas ✔ Análisis de fallas
         </div>
     """,unsafe_allow_html=True)
-    usuario=st.text_input("Usuario")
-    password=st.text_input("Contraseña",type="password")
-    if st.button("Ingresar"):
+    usuario=st.text_input("USUARIO")
+    password=st.text_input("CONTRASEÑA",type="password")
+    if st.button("INGRESAR"):
         df_users=pd.DataFrame(ws_usuarios.get_all_records())
         valid=df_users[(df_users["Usuario"]==usuario)&(df_users["Password"].astype(str)==password)]
         if not valid.empty:
@@ -122,11 +163,12 @@ if st.sidebar.button("Cerrar sesión"):
 
 # ================= BITÁCORA (DURACIÓN AUTOMÁTICA) =================
 if st.session_state.rol in ROLES_TECNICOS:
-    st.title(f"🛠 Bitácora diaria – {st.session_state.area}")
+    st.title(f"📝BITÁCORA DIARIA – {st.session_state.area}")
 
-    tab_registro, tab_mis_registros, tab_avance = st.tabs([
+    tab_registro, tab_adicional, tab_mis_registros, tab_avance = st.tabs([
         "📝 Registrar OT",
-        "✏️ Mis registros",
+        "➕ Actividad adicional",
+        "✏️ Editar registros",
         "📈 Mi avance"
     ])
 
@@ -421,6 +463,21 @@ if st.session_state.rol in ROLES_TECNICOS:
                         disabled=True
                     )
 
+                # ===== CAMPOS SOLO PARA CORRECTIVO (PASO 1) =====
+                tipo_mantto = str(fila["tipo mantto"]).strip().upper()
+                causa_falla = ""
+                codigo_falla = ""
+                if tipo_mantto == "CORRECTIVO":
+                    st.markdown("### 🔧 INFORMACIÓN DE FALLA CORRECTIVA")
+
+                    col_cf1, col_cf2 = st.columns(2)
+
+                    with col_cf1:
+                        causa_falla = st.text_input("Causa Falla")
+
+                    with col_cf2:
+                        codigo_falla = st.text_input("Código Falla")
+
                  # ===== FILA FINAL =====
                 continua = st.selectbox("¿Continúa?", ["Sí", "No"])
                 guardar = st.form_submit_button("Guardar")
@@ -444,14 +501,96 @@ if st.session_state.rol in ROLES_TECNICOS:
                         continua,
                         st.session_state.area,
                         recurso,
-                        "", "",
+                        causa_falla,
+                        codigo_falla,
                         hora_inicio.strftime("%H:%M"),
                         hora_cierre.strftime("%H:%M")
                     ])
 
                     st.success("Registro guardado")
                     st.rerun()
+# ================= ACTIVIDAD ADICIONAL =================
+with tab_adicional:
 
+    st.subheader("➕ Registro de Actividad Adicional")
+
+    # ===== GENERAR ID AUTOMÁTICO DESDE HOJA NUEVA =====
+    df_adicional = pd.DataFrame(ws_adicional.get_all_records())
+
+    if df_adicional.empty:
+        ultimo_id = 0
+    else:
+        df_adicional["id_adicional"] = pd.to_numeric(df_adicional["id_adicional"], errors="coerce")
+        ultimo_id = df_adicional["id_adicional"].max()
+
+        if pd.isna(ultimo_id):
+            ultimo_id = 0
+
+    nuevo_id = str(int(ultimo_id) + 1).zfill(8)
+
+    # ===== FORMULARIO =====
+    with st.form("actividad_adicional", clear_on_submit=True):
+
+        st.markdown(f"### 🆔 ID: {nuevo_id}")
+
+        fecha = date.today()
+        st.text_input("Fecha", fecha, disabled=True)
+
+        actividad = st.text_area("Actividad realizada")
+
+        detalle = st.text_area("Detalle ejecutado")
+
+        sede = st.selectbox(
+            "Sede",
+            ["PGAS", "PFRAC", "TALLER MANTENIMIENTO"]
+        )
+
+        from datetime import time
+        horas_turno = (
+            [time(h, 0) for h in range(7, 12)] +
+            [time(12, 0)] +
+            [time(13, 30)] +
+            [time(h, 0) for h in range(14, 20)]
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            hora_inicio = st.selectbox("Hora inicio", horas_turno)
+        with col2:
+            hora_cierre = st.selectbox("Hora cierre", horas_turno)
+
+        df_users = pd.DataFrame(ws_usuarios.get_all_records())
+        recursos = df_users[df_users["area"] == st.session_state.area]["Nombre"].tolist()
+        recursos.insert(0, "N/A")
+
+        recurso = st.selectbox("Recurso personal (apoyo)", recursos)
+
+        guardar_adicional = st.form_submit_button("Guardar actividad")
+
+        if guardar_adicional:
+
+            hi = datetime.combine(fecha, hora_inicio)
+            hf = datetime.combine(fecha, hora_cierre)
+
+            duracion = round((hf - hi).total_seconds() / 3600, 2)
+
+            ws_adicional.append_row([
+                fecha.isoformat(),
+                datetime.now().strftime("%H:%M:%S"),
+                nuevo_id,
+                actividad,
+                detalle,
+                st.session_state.nombre,
+                duracion,
+                st.session_state.area,
+                recurso,
+                sede,
+                hora_inicio.strftime("%H:%M"),
+                hora_cierre.strftime("%H:%M")
+            ])
+
+            st.success(f"✅ Actividad registrada con ID {nuevo_id}")
+            st.rerun()
     # ================= MIS REGISTROS =================
     with tab_mis_registros:
         st.subheader("✏️ Mis registros del día")
