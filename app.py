@@ -13,6 +13,7 @@ from io import BytesIO
 import base64
 import altair as alt
 import os
+import pytz
 import matplotlib.pyplot as plt
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image, PageBreak, Spacer
@@ -23,6 +24,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 from io import BytesIO
+
 
 
 st.markdown(
@@ -482,33 +484,40 @@ if st.session_state.rol in ROLES_TECNICOS:
                 continua = st.selectbox("¿Continúa?", ["Sí", "No"])
                 guardar = st.form_submit_button("Guardar")
                 
-                if guardar:
-                    hi = datetime.combine(fecha_sel, hora_inicio)
-                    hf = datetime.combine(fecha_sel, hora_cierre)
+                # ===== HORA PERÚ =====
+                tz = pytz.timezone("America/Lima")
+                hora_actual = datetime.now(tz)
 
-                    duracion_final = round((hf - hi).total_seconds() / 3600, 2)
-                    ws_bitacora.append_row([
-                        fecha_sel.isoformat(),
-                        datetime.now().strftime("%H:%M:%S"),
-                        fila["pt"],
-                        fila["ot"],
-                        fila["equipo"],
-                        fila["actividad"],
-                        st.session_state.nombre,
-                        detalle,
-                        duracion_final,
-                        avance,
-                        continua,
-                        st.session_state.area,
-                        recurso,
-                        causa_falla,
-                        codigo_falla,
-                        hora_inicio.strftime("%H:%M"),
-                        hora_cierre.strftime("%H:%M")
+                # ===== VALIDACIÓN HORAS =====
+                hi = datetime.combine(fecha_sel, hora_inicio)
+                hf = datetime.combine(fecha_sel, hora_cierre)
+                if hf <= hi:
+                    st.error("La hora de cierre debe ser mayor que la de inicio")
+                    st.stop()
+
+                duracion_final = round((hf - hi).total_seconds() / 3600, 2)
+                ws_bitacora.append_row([
+                    fecha_sel.isoformat(),
+                    datetime.now().strftime("%H:%M:%S"),
+                    fila["pt"],
+                    fila["ot"],
+                    fila["equipo"],
+                    fila["actividad"],
+                    st.session_state.nombre,
+                    detalle,
+                    duracion_final,
+                    avance,
+                    continua,
+                    st.session_state.area,
+                    recurso,
+                    causa_falla,
+                    codigo_falla,
+                    hora_inicio.strftime("%H:%M"),
+                    hora_cierre.strftime("%H:%M")
                     ])
 
-                    st.success("Registro guardado")
-                    st.rerun()
+                st.success("Registro guardado")
+                st.rerun()
 # ================= ACTIVIDAD ADICIONAL =================
     with tab_adicional:
 
