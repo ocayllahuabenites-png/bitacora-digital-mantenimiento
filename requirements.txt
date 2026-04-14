@@ -8,3 +8,4 @@ openpyxl
 matplotlib
 altair
 reportlab
+pytz
