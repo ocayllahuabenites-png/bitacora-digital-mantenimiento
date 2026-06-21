@@ -3,7 +3,7 @@
 # ING. MECÁNICA ELÉCTRICA - JHAN HERRERA ORBEZO
 # ============================================================
 
-import streamlit  st
+import streamlit as st
 import gspread
 import pandas as pd
 import unicodedata
